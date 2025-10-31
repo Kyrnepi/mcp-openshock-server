@@ -25,6 +25,7 @@ MCP_AUTH_TOKEN = os.getenv("MCP_AUTH_TOKEN")
 MCP_SERVER_NAME = os.getenv("MCP_SERVER_NAME", "openshock-mcp-server")
 MCP_VERSION = os.getenv("MCP_VERSION", "1.0.0")
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+SHOCK_LIMIT = int(os.getenv("SHOCK_LIMIT", "0"))  # 0 = pas de limite
 
 # Log de démarrage pour vérifier la configuration
 logger.info(f"Starting {MCP_SERVER_NAME} v{MCP_VERSION}")
@@ -32,9 +33,13 @@ logger.info(f"OpenShock API URL: {OPENSHOCK_API_URL}")
 logger.info(f"OpenShock API Token configured: {'Yes' if OPENSHOCK_API_TOKEN else 'No'}")
 logger.info(f"MCP Auth Token configured: {'Yes' if MCP_AUTH_TOKEN else 'No'}")
 logger.info(f"Debug mode: {'Yes' if DEBUG_MODE else 'No'}")
+logger.info(f"Shock intensity limit: {'No limit' if SHOCK_LIMIT == 0 else str(SHOCK_LIMIT)}")
 
 if DEBUG_MODE:
     logger.warning("DEBUG MODE ENABLED - Authentication may be bypassed!")
+
+if SHOCK_LIMIT > 0:
+    logger.info(f"SECURITY: Shock intensity will be automatically limited to maximum {SHOCK_LIMIT}")
 
 if not OPENSHOCK_API_TOKEN:
     raise ValueError("OPENSHOCK_API_TOKEN environment variable is required")
@@ -124,156 +129,167 @@ async def get_openshock_client():
         timeout=30.0
     )
 
-# Schémas des outils MCP avec intensité requise pour BEEP
-TOOL_SCHEMAS = {
-    "SHOCK": {
-        "name": "SHOCK",
-        "description": "Send shock command to OpenShock devices",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "shockers": {
-                    "type": "array",
-                    "description": "List of shockers to control",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": {
-                                "type": "string",
-                                "description": "Shocker ID"
+# Fonction pour calculer la limite d'intensité maximale pour SHOCK
+def get_max_shock_intensity():
+    """Retourne l'intensité maximale autorisée pour les chocs"""
+    if SHOCK_LIMIT == 0:
+        return 100  # Pas de limite
+    return min(SHOCK_LIMIT, 100)  # Ne peut pas dépasser 100 de toute façon
+
+# Schémas des outils MCP avec intensité requise pour BEEP et limite de shock
+def get_tool_schemas():
+    """Retourne les schémas des outils avec la limite de shock appliquée"""
+    max_shock_intensity = get_max_shock_intensity()
+    
+    return {
+        "SHOCK": {
+            "name": "SHOCK",
+            "description": f"Send shock command to OpenShock devices (intensity automatically limited to {max_shock_intensity} if SHOCK_LIMIT is set)",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "shockers": {
+                        "type": "array",
+                        "description": "List of shockers to control",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Shocker ID"
+                                },
+                                "intensity": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 100,
+                                    "description": f"Shock intensity (1-100, automatically limited to {max_shock_intensity} if SHOCK_LIMIT is set)"
+                                },
+                                "duration": {
+                                    "type": "integer",
+                                    "minimum": 300,
+                                    "maximum": 30000,
+                                    "description": "Duration in milliseconds (300-30000)"
+                                }
                             },
-                            "intensity": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "maximum": 100,
-                                "description": "Shock intensity (1-100)"
-                            },
-                            "duration": {
-                                "type": "integer",
-                                "minimum": 300,
-                                "maximum": 30000,
-                                "description": "Duration in milliseconds (300-30000)"
-                            }
-                        },
-                        "required": ["id", "intensity", "duration"]
+                            "required": ["id", "intensity", "duration"]
+                        }
                     }
-                }
-            },
-            "required": ["shockers"]
-        }
-    },
-    "VIBRATE": {
-        "name": "VIBRATE",
-        "description": "Send vibrate command to OpenShock devices",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "shockers": {
-                    "type": "array",
-                    "description": "List of shockers to control",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": {
-                                "type": "string",
-                                "description": "Shocker ID"
+                },
+                "required": ["shockers"]
+            }
+        },
+        "VIBRATE": {
+            "name": "VIBRATE",
+            "description": "Send vibrate command to OpenShock devices",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "shockers": {
+                        "type": "array",
+                        "description": "List of shockers to control",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Shocker ID"
+                                },
+                                "intensity": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 100,
+                                    "description": "Vibration intensity (1-100)"
+                                },
+                                "duration": {
+                                    "type": "integer",
+                                    "minimum": 300,
+                                    "maximum": 30000,
+                                    "description": "Duration in milliseconds (300-30000)"
+                                }
                             },
-                            "intensity": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "maximum": 100,
-                                "description": "Vibration intensity (1-100)"
-                            },
-                            "duration": {
-                                "type": "integer",
-                                "minimum": 300,
-                                "maximum": 30000,
-                                "description": "Duration in milliseconds (300-30000)"
-                            }
-                        },
-                        "required": ["id", "intensity", "duration"]
+                            "required": ["id", "intensity", "duration"]
+                        }
                     }
-                }
-            },
-            "required": ["shockers"]
-        }
-    },
-    "BEEP": {
-        "name": "BEEP",
-        "description": "Send beep/sound command to OpenShock devices",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "shockers": {
-                    "type": "array",
-                    "description": "List of shockers to control",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": {
-                                "type": "string",
-                                "description": "Shocker ID"
+                },
+                "required": ["shockers"]
+            }
+        },
+        "BEEP": {
+            "name": "BEEP",
+            "description": "Send beep/sound command to OpenShock devices",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "shockers": {
+                        "type": "array",
+                        "description": "List of shockers to control",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Shocker ID"
+                                },
+                                "intensity": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 100,
+                                    "description": "Beep volume intensity (1-100)",
+                                    "default": 50
+                                },
+                                "duration": {
+                                    "type": "integer",
+                                    "minimum": 300,
+                                    "maximum": 30000,
+                                    "description": "Duration in milliseconds (300-30000)"
+                                }
                             },
-                            "intensity": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "maximum": 100,
-                                "description": "Beep volume intensity (1-100)",
-                                "default": 50
-                            },
-                            "duration": {
-                                "type": "integer",
-                                "minimum": 300,
-                                "maximum": 30000,
-                                "description": "Duration in milliseconds (300-30000)"
-                            }
-                        },
-                        "required": ["id", "intensity", "duration"]
+                            "required": ["id", "intensity", "duration"]
+                        }
                     }
-                }
-            },
-            "required": ["shockers"]
-        }
-    },
-    "STOP": {
-        "name": "STOP",
-        "description": "Stop all commands on OpenShock devices",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "shockers": {
-                    "type": "array",
-                    "description": "List of shocker IDs to stop",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": {
-                                "type": "string",
-                                "description": "Shocker ID"
+                },
+                "required": ["shockers"]
+            }
+        },
+        "STOP": {
+            "name": "STOP",
+            "description": "Stop all commands on OpenShock devices",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "shockers": {
+                        "type": "array",
+                        "description": "List of shocker IDs to stop",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Shocker ID"
+                                },
+                                "intensity": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 0,
+                                    "description": "Always 0 for stop commands",
+                                    "default": 0
+                                },
+                                "duration": {
+                                    "type": "integer",
+                                    "minimum": 300,
+                                    "maximum": 300,
+                                    "description": "Always 300ms for stop commands", 
+                                    "default": 300
+                                }
                             },
-                            "intensity": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 0,
-                                "description": "Always 0 for stop commands",
-                                "default": 0
-                            },
-                            "duration": {
-                                "type": "integer",
-                                "minimum": 300,
-                                "maximum": 300,
-                                "description": "Always 300ms for stop commands", 
-                                "default": 300
-                            }
-                        },
-                        "required": ["id"]
+                            "required": ["id"]
+                        }
                     }
-                }
-            },
-            "required": ["shockers"]
+                },
+                "required": ["shockers"]
+            }
         }
     }
-}
 
 # Mappage des commandes MCP vers OpenShock API
 COMMAND_MAPPING = {
@@ -302,8 +318,9 @@ async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
 async def handle_tools_list(params: Dict[str, Any]) -> Dict[str, Any]:
     """Liste les outils disponibles"""
     logger.info("Processing tools/list request")
+    tool_schemas = get_tool_schemas()
     return {
-        "tools": list(TOOL_SCHEMAS.values())
+        "tools": list(tool_schemas.values())
     }
 
 async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -313,7 +330,8 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
     
     logger.info(f"Processing tools/call request for tool: {tool_name}")
     
-    if tool_name not in TOOL_SCHEMAS:
+    tool_schemas = get_tool_schemas()
+    if tool_name not in tool_schemas:
         raise ValueError(f"Unknown tool: {tool_name}")
     
     # Validation des paramètres
@@ -322,6 +340,8 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
     
     # Préparation des commandes pour OpenShock API - Structure corrigée
     shocks = []
+    max_shock_intensity = get_max_shock_intensity()
+    intensity_adjustments = []  # Pour tracker les ajustements
     
     for shocker in tool_arguments["shockers"]:
         shocker_id = shocker.get("id")
@@ -341,14 +361,42 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
                 "intensity": 0,
                 "duration": 300
             })
-        elif tool_name in ["SHOCK", "VIBRATE"]:
-            # SHOCK et VIBRATE requièrent intensité et durée explicites
+        elif tool_name == "SHOCK":
+            # SHOCK avec limitation automatique de l'intensité
             intensity = shocker.get("intensity")
             duration = shocker.get("duration")
             if intensity is None or duration is None:
                 raise ValueError(f"{tool_name} requires intensity and duration")
             
-            # Validation des limites
+            # Validation des limites de base
+            if intensity < 1 or intensity > 100:
+                raise ValueError("Intensity must be between 1 and 100")
+            if duration < 300 or duration > 30000:
+                raise ValueError("Duration must be between 300 and 30000 milliseconds")
+            
+            # Application automatique de la limite SHOCK_LIMIT
+            original_intensity = intensity
+            if SHOCK_LIMIT > 0 and intensity > max_shock_intensity:
+                intensity = max_shock_intensity
+                intensity_adjustments.append({
+                    "shocker_id": shocker_id,
+                    "requested": original_intensity,
+                    "applied": intensity
+                })
+                logger.warning(f"SECURITY: Shock intensity for {shocker_id} reduced from {original_intensity} to {intensity} (SHOCK_LIMIT={SHOCK_LIMIT})")
+            
+            shock_request.update({
+                "intensity": intensity,
+                "duration": duration
+            })
+        elif tool_name == "VIBRATE":
+            # VIBRATE n'est pas affectée par SHOCK_LIMIT
+            intensity = shocker.get("intensity")
+            duration = shocker.get("duration")
+            if intensity is None or duration is None:
+                raise ValueError(f"{tool_name} requires intensity and duration")
+            
+            # Validation des limites standard
             if intensity < 1 or intensity > 100:
                 raise ValueError("Intensity must be between 1 and 100")
             if duration < 300 or duration > 30000:
@@ -410,11 +458,21 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
                 # Si la réponse n'est pas du JSON, utiliser le texte
                 result = {"message": response.text, "status": "success"}
             
+            # Préparer le message de réponse avec les ajustements d'intensité
+            success_message = f"Successfully executed {tool_name} command on {len(shocks)} shocker(s)."
+            
+            if intensity_adjustments:
+                success_message += "\n\nSecurity adjustments applied:"
+                for adj in intensity_adjustments:
+                    success_message += f"\n- Shocker {adj['shocker_id']}: intensity reduced from {adj['requested']} to {adj['applied']} (SHOCK_LIMIT={SHOCK_LIMIT})"
+            
+            success_message += f"\n\nAPI Response: {json.dumps(result, indent=2)}"
+            
             return {
                 "content": [
                     {
                         "type": "text",
-                        "text": f"Successfully executed {tool_name} command on {len(shocks)} shocker(s). Response: {json.dumps(result, indent=2)}"
+                        "text": success_message
                     }
                 ]
             }
@@ -511,9 +569,11 @@ async def root():
         "name": MCP_SERVER_NAME,
         "version": MCP_VERSION,
         "protocol": "MCP",
-        "tools": list(TOOL_SCHEMAS.keys()),
+        "tools": list(get_tool_schemas().keys()),
         "auth_configured": bool(MCP_AUTH_TOKEN),
         "debug_mode": DEBUG_MODE,
+        "shock_limit": SHOCK_LIMIT if SHOCK_LIMIT > 0 else "No limit",
+        "max_shock_intensity": get_max_shock_intensity(),
         "endpoints": {
             "mcp": "POST /mcp",
             "health": "GET /health",
@@ -525,7 +585,12 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Endpoint de santé"""
-    return {"status": "healthy", "server": MCP_SERVER_NAME, "version": MCP_VERSION}
+    return {
+        "status": "healthy", 
+        "server": MCP_SERVER_NAME, 
+        "version": MCP_VERSION,
+        "shock_limit": SHOCK_LIMIT if SHOCK_LIMIT > 0 else "No limit"
+    }
 
 # Endpoint de test sans authentification pour diagnostiquer
 @app.post("/test-auth")
@@ -540,6 +605,8 @@ async def test_auth(request: Request):
         "auth_header": auth_header,
         "expected_token": f"{MCP_AUTH_TOKEN[:10]}..." if MCP_AUTH_TOKEN else "Not configured",
         "debug_mode": DEBUG_MODE,
+        "shock_limit": SHOCK_LIMIT if SHOCK_LIMIT > 0 else "No limit",
+        "max_shock_intensity": get_max_shock_intensity(),
         "token_match": auth_header.replace("Bearer ", "") == MCP_AUTH_TOKEN if auth_header.startswith("Bearer ") else False
     }
 
