@@ -7,16 +7,17 @@
 
 ## English
 
-MCP (Model Context Protocol) server for controlling OpenShock devices with Bearer token authentication and HTTP streaming support.
+MCP (Model Context Protocol) server for controlling OpenShock devices with Bearer token authentication, HTTP streaming support, and automatic shock intensity limiting.
 
 ### Features
 
 - **Complete MCP Protocol**: Full implementation of MCP standard with JSON-RPC 2.0
 - **Available Tools**:
-  - `SHOCK`: Send shock commands
+  - `SHOCK`: Send shock commands with automatic intensity limiting
   - `VIBRATE`: Send vibration commands  
   - `BEEP`: Send sound/beep commands
   - `STOP`: Stop all commands
+- **Safety Features**: Automatic shock intensity limiting via `SHOCK_LIMIT` environment variable
 - **Bearer Authentication**: Secured with authentication token
 - **Streaming Support**: HTTP streaming responses
 - **Docker Containerization**: Easy deployment with Docker and docker-compose
@@ -39,6 +40,7 @@ MCP (Model Context Protocol) server for controlling OpenShock devices with Beare
    ```bash
    OPENSHOCK_API_TOKEN=your_openshock_token
    MCP_AUTH_TOKEN=your_secure_mcp_token
+   SHOCK_LIMIT=50  # Optional: limit shock intensity (0 = no limit)
    ```
 
 #### Starting with Docker Compose
@@ -56,6 +58,7 @@ docker build -t mcp-openshock-server .
 docker run -p 8000:8000 \
   -e OPENSHOCK_API_TOKEN=your_token \
   -e MCP_AUTH_TOKEN=your_mcp_token \
+  -e SHOCK_LIMIT=50 \
   mcp-openshock-server
 ```
 
@@ -73,6 +76,21 @@ Authorization: Bearer your_mcp_token
 - `POST /mcp`: Main MCP endpoint
 - `GET /health`: Health check
 - `GET /`: Server information
+
+#### Safety Features
+
+The `SHOCK_LIMIT` environment variable provides automatic safety limiting:
+- `SHOCK_LIMIT=0`: No limit (default behavior)
+- `SHOCK_LIMIT=50`: Automatically limits shock intensity to maximum 50
+- `SHOCK_LIMIT=25`: Automatically limits shock intensity to maximum 25
+
+When a shock command is sent with intensity higher than `SHOCK_LIMIT`:
+- The command is **not rejected**
+- The intensity is **automatically reduced** to the limit
+- The response includes details about the adjustment
+- All adjustments are logged for security audit
+
+**Note**: Only `SHOCK` commands are affected by `SHOCK_LIMIT`. `VIBRATE` and `BEEP` commands are not limited.
 
 #### MCP Request Examples
 
@@ -96,7 +114,7 @@ Authorization: Bearer your_mcp_token
 }
 ```
 
-##### Execute Shock
+##### Execute Shock (with automatic limiting)
 ```json
 {
   "jsonrpc": "2.0",
@@ -107,7 +125,7 @@ Authorization: Bearer your_mcp_token
       "shockers": [
         {
           "id": "your_shocker_id",
-          "intensity": 50,
+          "intensity": 80,
           "duration": 1000
         }
       ]
@@ -116,8 +134,9 @@ Authorization: Bearer your_mcp_token
   "id": 3
 }
 ```
+*If `SHOCK_LIMIT=50`, the intensity will be automatically reduced to 50.*
 
-##### Execute Vibration
+##### Execute Vibration (not affected by SHOCK_LIMIT)
 ```json
 {
   "jsonrpc": "2.0",
@@ -138,7 +157,7 @@ Authorization: Bearer your_mcp_token
 }
 ```
 
-##### Sound/Beep
+##### Sound/Beep (requires intensity parameter)
 ```json
 {
   "jsonrpc": "2.0",
@@ -149,6 +168,7 @@ Authorization: Bearer your_mcp_token
       "shockers": [
         {
           "id": "your_shocker_id",
+          "intensity": 50,
           "duration": 500
         }
       ]
@@ -183,17 +203,21 @@ Authorization: Bearer your_mcp_token
 |----------|-------------|----------|---------|
 | `OPENSHOCK_API_TOKEN` | OpenShock API token | ✅ | - |
 | `MCP_AUTH_TOKEN` | MCP authentication token | ✅ | - |
+| `SHOCK_LIMIT` | Maximum shock intensity (0 = no limit) | ❌ | 0 |
 | `OPENSHOCK_API_URL` | OpenShock API URL | ❌ | https://api.openshock.app |
 | `MCP_SERVER_NAME` | MCP server name | ❌ | openshock-mcp-server |
 | `MCP_VERSION` | Server version | ❌ | 1.0.0 |
 | `PORT` | Listening port | ❌ | 8000 |
+| `DEBUG_MODE` | Enable debug mode | ❌ | false |
 
 ### Security
 
 - ⚠️ **Important**: Keep your tokens secure and never share them
 - Use strong and unique MCP tokens
+- Configure `SHOCK_LIMIT` according to your safety requirements
 - Consider using HTTPS in production
 - Limit network access to the server
+- All intensity adjustments are logged for audit purposes
 
 ### Support and Development
 
@@ -205,16 +229,17 @@ To report issues or contribute, create an issue in the repository.
 
 ## Français
 
-Serveur MCP (Model Context Protocol) pour contrôler les dispositifs OpenShock avec authentification Bearer token et support streaming HTTP.
+Serveur MCP (Model Context Protocol) pour contrôler les dispositifs OpenShock avec authentification Bearer token, support streaming HTTP, et limitation automatique de l'intensité des chocs.
 
 ### Fonctionnalités
 
 - **Protocole MCP complet**: Implémentation complète du standard MCP avec JSON-RPC 2.0
 - **Outils disponibles**:
-  - `SHOCK`: Envoie des commandes de choc
+  - `SHOCK`: Envoie des commandes de choc avec limitation automatique d'intensité
   - `VIBRATE`: Envoie des commandes de vibration  
   - `BEEP`: Envoie des commandes sonores
   - `STOP`: Arrête toutes les commandes
+- **Fonctionnalités de sécurité**: Limitation automatique de l'intensité des chocs via la variable `SHOCK_LIMIT`
 - **Authentification Bearer**: Sécurisation via token d'authentification
 - **Support streaming**: Réponses HTTP streamées
 - **Containerisation Docker**: Déploiement facile avec Docker et docker-compose
@@ -237,6 +262,7 @@ Serveur MCP (Model Context Protocol) pour contrôler les dispositifs OpenShock a
    ```bash
    OPENSHOCK_API_TOKEN=votre_token_openshock
    MCP_AUTH_TOKEN=votre_token_mcp_securise
+   SHOCK_LIMIT=50  # Optionnel: limite l'intensité des chocs (0 = pas de limite)
    ```
 
 #### Démarrage avec Docker Compose
@@ -254,6 +280,7 @@ docker build -t mcp-openshock-server .
 docker run -p 8000:8000 \
   -e OPENSHOCK_API_TOKEN=votre_token \
   -e MCP_AUTH_TOKEN=votre_token_mcp \
+  -e SHOCK_LIMIT=50 \
   mcp-openshock-server
 ```
 
@@ -271,6 +298,21 @@ Authorization: Bearer votre_token_mcp
 - `POST /mcp` : Endpoint principal MCP
 - `GET /health` : Vérification de santé
 - `GET /` : Informations sur le serveur
+
+#### Fonctionnalités de sécurité
+
+La variable d'environnement `SHOCK_LIMIT` fournit une limitation automatique de sécurité :
+- `SHOCK_LIMIT=0`: Pas de limite (comportement par défaut)
+- `SHOCK_LIMIT=50`: Limite automatiquement l'intensité des chocs à 50 maximum
+- `SHOCK_LIMIT=25`: Limite automatiquement l'intensité des chocs à 25 maximum
+
+Quand une commande de choc est envoyée avec une intensité supérieure à `SHOCK_LIMIT` :
+- La commande n'est **pas rejetée**
+- L'intensité est **automatiquement réduite** à la limite
+- La réponse inclut les détails de l'ajustement
+- Tous les ajustements sont loggés pour audit de sécurité
+
+**Note**: Seules les commandes `SHOCK` sont affectées par `SHOCK_LIMIT`. Les commandes `VIBRATE` et `BEEP` ne sont pas limitées.
 
 #### Exemples de requêtes MCP
 
@@ -294,7 +336,7 @@ Authorization: Bearer votre_token_mcp
 }
 ```
 
-##### Exécution d'un choc
+##### Exécution d'un choc (avec limitation automatique)
 ```json
 {
   "jsonrpc": "2.0",
@@ -305,7 +347,7 @@ Authorization: Bearer votre_token_mcp
       "shockers": [
         {
           "id": "your_shocker_id",
-          "intensity": 50,
+          "intensity": 80,
           "duration": 1000
         }
       ]
@@ -314,8 +356,9 @@ Authorization: Bearer votre_token_mcp
   "id": 3
 }
 ```
+*Si `SHOCK_LIMIT=50`, l'intensité sera automatiquement réduite à 50.*
 
-##### Exécution d'une vibration
+##### Exécution d'une vibration (non affectée par SHOCK_LIMIT)
 ```json
 {
   "jsonrpc": "2.0",
@@ -336,7 +379,7 @@ Authorization: Bearer votre_token_mcp
 }
 ```
 
-##### Son/Beep
+##### Son/Beep (requiert le paramètre intensity)
 ```json
 {
   "jsonrpc": "2.0",
@@ -347,6 +390,7 @@ Authorization: Bearer votre_token_mcp
       "shockers": [
         {
           "id": "your_shocker_id",
+          "intensity": 50,
           "duration": 500
         }
       ]
@@ -381,17 +425,21 @@ Authorization: Bearer votre_token_mcp
 |----------|-------------|---------|---------|
 | `OPENSHOCK_API_TOKEN` | Token API OpenShock | ✅ | - |
 | `MCP_AUTH_TOKEN` | Token d'authentification MCP | ✅ | - |
+| `SHOCK_LIMIT` | Intensité maximale des chocs (0 = pas de limite) | ❌ | 0 |
 | `OPENSHOCK_API_URL` | URL de l'API OpenShock | ❌ | https://api.openshock.app |
 | `MCP_SERVER_NAME` | Nom du serveur MCP | ❌ | openshock-mcp-server |
 | `MCP_VERSION` | Version du serveur | ❌ | 1.0.0 |
 | `PORT` | Port d'écoute | ❌ | 8000 |
+| `DEBUG_MODE` | Activer le mode debug | ❌ | false |
 
 ### Sécurité
 
 - ⚠️ **Important** : Gardez vos tokens sécurisés et ne les partagez jamais
 - Utilisez des tokens MCP forts et uniques
+- Configurez `SHOCK_LIMIT` selon vos exigences de sécurité
 - Considérez l'utilisation de HTTPS en production
 - Limitez l'accès réseau au serveur
+- Tous les ajustements d'intensité sont loggés à des fins d'audit
 
 ### Support et développement
 
