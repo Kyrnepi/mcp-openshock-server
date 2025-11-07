@@ -1,24 +1,23 @@
-
 FROM python:3.11-slim
 
-# Définir le répertoire de travail
+# Set the working directory
 WORKDIR /app
 
-# Copier les fichiers de requirements
+# Copy requirements file
 COPY requirements.txt .
 
-# Installer les dépendances Python
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copier le code de l'application
+# Copy application code
 COPY app.py .
 
-# Exposer le port
+# Expose the port
 EXPOSE 8000
 
-# Variables d'environnement par défaut
+# Default environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
 
-# Commande de démarrage
+# Startup command
 CMD ["python", "app.py"]

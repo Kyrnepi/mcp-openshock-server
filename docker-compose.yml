@@ -1,4 +1,3 @@
-
 version: '3.8'
 
 services:
@@ -11,8 +10,9 @@ services:
       - OPENSHOCK_API_TOKEN=${OPENSHOCK_API_TOKEN}
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
       - MCP_SERVER_NAME=openshock-mcp-server
-      - MCP_VERSION=1.0.0
+      - MCP_VERSION=2.0.1
       - PORT=8000
+      - SHOCK_LIMIT=${SHOCK_LIMIT:-0}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
